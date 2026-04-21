@@ -1,0 +1,6 @@
+@MusicColab.Api_HostAddress = http://localhost:5252
+
+GET {{MusicColab.Api_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
