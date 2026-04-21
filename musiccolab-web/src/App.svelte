@@ -315,7 +315,7 @@
                   <div class="swipe-badge nope" style={`opacity:${swipeDirection === 'Nope' ? swipeProgress : 0}`}>
                     Nope
                   </div>
-                  <img src={currentArtist.imageUrl ?? FALLBACK_ARTIST_IMAGE} alt={currentArtist.name} />
+                  <img draggable="false" src={currentArtist.imageUrl ?? FALLBACK_ARTIST_IMAGE} alt={currentArtist.name} />
                   <div class="card-content">
                     <h3>{currentArtist.name}</h3>
                     {#if visibleGenres.length}
