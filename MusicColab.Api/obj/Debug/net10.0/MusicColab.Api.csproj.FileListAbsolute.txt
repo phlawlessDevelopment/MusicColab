@@ -158,3 +158,4 @@
 /home/phlawless/dev/MusicColab/MusicColab.Api/obj/Debug/net10.0/MusicColab.Api.pdb
 /home/phlawless/dev/MusicColab/MusicColab.Api/obj/Debug/net10.0/MusicColab.Api.genruntimeconfig.cache
 /home/phlawless/dev/MusicColab/MusicColab.Api/obj/Debug/net10.0/ref/MusicColab.Api.dll
+/home/phlawless/dev/MusicColab/MusicColab.Api/obj/Debug/net10.0/MusicColab.Api.sourcelink.json

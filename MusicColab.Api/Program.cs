@@ -1,4 +1,6 @@
 using System.Text;
+using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -12,7 +14,21 @@ using MusicColab.Api.Services;
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.Configure<JwtOptions>(builder.Configuration.GetSection(JwtOptions.SectionName));
-builder.Services.Configure<SpotifyOptions>(builder.Configuration.GetSection(SpotifyOptions.SectionName));
+builder.Services
+    .AddOptions<SpotifyOptions>()
+    .Bind(builder.Configuration.GetSection(SpotifyOptions.SectionName))
+    .Configure(options =>
+    {
+        if (string.IsNullOrWhiteSpace(options.ClientId))
+        {
+            options.ClientId = builder.Configuration["SPOTIFY_ID"] ?? string.Empty;
+        }
+
+        if (string.IsNullOrWhiteSpace(options.ClientSecret))
+        {
+            options.ClientSecret = builder.Configuration["SPOTIFY_SECRET"] ?? string.Empty;
+        }
+    });
 
 var jwtOptions = builder.Configuration.GetSection(JwtOptions.SectionName).Get<JwtOptions>() ?? new JwtOptions();
 
@@ -64,6 +80,19 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     var dbContext = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var logger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
+
+    try
+    {
+        await dbContext.Database.MigrateAsync();
+    }
+    catch (SqliteException ex) when (app.Environment.IsDevelopment())
+    {
+        logger.LogWarning(ex, "Legacy SQLite schema detected. Recreating local development database.");
+        await dbContext.Database.EnsureDeletedAsync();
+        await dbContext.Database.MigrateAsync();
+    }
+
     await SeedData.EnsureSeedDataAsync(dbContext);
 }
 
@@ -141,7 +170,7 @@ app.MapGet("/artists/feed", async (
         return Results.Json(new { message = "Your session no longer matches the current database. Sign in again." }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
-    var artists = await spotifyService.BuildFeedForUserAsync(userId, limit ?? 12, cancellationToken);
+    var artists = await spotifyService.BuildFeedForUserAsync(userId, limit ?? 5, cancellationToken);
     return Results.Ok(new ArtistFeedResponse(artists));
 }).RequireAuthorization();
 
@@ -159,16 +188,33 @@ app.MapPost("/preferences", async (
         return Results.Json(new { message = "Your session no longer matches the current database. Sign in again." }, statusCode: StatusCodes.Status401Unauthorized);
     }
 
-    var artist = await dbContext.Artists.FindAsync([request.ArtistId], cancellationToken);
-    if (artist is null)
+    if (string.IsNullOrWhiteSpace(request.ArtistId) || request.ArtistId.Length > 64)
     {
-        return Results.BadRequest(new { message = "Unknown artist_id." });
+        return Results.BadRequest(new { message = "artistId is required and must be 64 characters or less." });
+    }
+
+    if (string.IsNullOrWhiteSpace(request.ArtistName) || request.ArtistName.Length > 300)
+    {
+        return Results.BadRequest(new { message = "artistName is required and must be 300 characters or less." });
+    }
+
+    if (!string.IsNullOrWhiteSpace(request.ImageUrl) && request.ImageUrl.Length > 2048)
+    {
+        return Results.BadRequest(new { message = "imageUrl must be 2048 characters or less." });
+    }
+
+    if (!string.IsNullOrWhiteSpace(request.PreviewUrl) && request.PreviewUrl.Length > 2048)
+    {
+        return Results.BadRequest(new { message = "previewUrl must be 2048 characters or less." });
     }
 
     if (!TryParsePreference(request.Preference, out var parsedPreference))
     {
         return Results.BadRequest(new { message = "Invalid preference. Use Like or Dislike." });
     }
+
+    var genres = NormalizeGenres(request.Genres);
+    var tagsJson = JsonSerializer.Serialize(genres);
 
     var existing = await dbContext.UserArtistPreferences
         .FirstOrDefaultAsync(x => x.UserId == userId && x.ArtistId == request.ArtistId, cancellationToken);
@@ -178,7 +224,11 @@ app.MapPost("/preferences", async (
         dbContext.UserArtistPreferences.Add(new UserArtistPreference
         {
             UserId = userId,
-            ArtistId = request.ArtistId,
+            ArtistId = request.ArtistId.Trim(),
+            ArtistName = request.ArtistName.Trim(),
+            ImageUrl = NormalizeOptionalValue(request.ImageUrl),
+            PreviewUrl = NormalizeOptionalValue(request.PreviewUrl),
+            TagsJson = tagsJson,
             Preference = parsedPreference,
             CreatedAt = DateTimeOffset.UtcNow
         });
@@ -186,6 +236,10 @@ app.MapPost("/preferences", async (
     else
     {
         existing.Preference = parsedPreference;
+        existing.ArtistName = request.ArtistName.Trim();
+        existing.ImageUrl = NormalizeOptionalValue(request.ImageUrl);
+        existing.PreviewUrl = NormalizeOptionalValue(request.PreviewUrl);
+        existing.TagsJson = tagsJson;
     }
 
     await dbContext.SaveChangesAsync(cancellationToken);
@@ -264,7 +318,6 @@ app.MapGet("/compare/{userA:guid}/{userB:guid}", async (
     }
 
     var preferences = await dbContext.UserArtistPreferences
-        .Include(x => x.Artist)
         .Where(x => x.UserId == userA || x.UserId == userB)
         .ToListAsync(cancellationToken);
 
@@ -273,3 +326,28 @@ app.MapGet("/compare/{userA:guid}/{userB:guid}", async (
 });
 
 app.Run();
+
+static string? NormalizeOptionalValue(string? value)
+{
+    if (string.IsNullOrWhiteSpace(value))
+    {
+        return null;
+    }
+
+    return value.Trim();
+}
+
+static IReadOnlyList<string> NormalizeGenres(IReadOnlyList<string>? genres)
+{
+    if (genres is null || genres.Count == 0)
+    {
+        return [];
+    }
+
+    return genres
+        .Where(x => !string.IsNullOrWhiteSpace(x))
+        .Select(x => x.Trim())
+        .Distinct(StringComparer.OrdinalIgnoreCase)
+        .Take(25)
+        .ToList();
+}

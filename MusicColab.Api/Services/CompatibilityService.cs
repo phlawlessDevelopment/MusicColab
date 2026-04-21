@@ -32,7 +32,7 @@ public sealed class CompatibilityService : ICompatibilityService
                 continue;
             }
 
-            var card = ToArtistCard(group[0].Artist);
+            var card = ToArtistCard(group[0]);
 
             if (prefA?.Preference == PreferenceValue.Like && prefB?.Preference == PreferenceValue.Like)
             {
@@ -65,9 +65,9 @@ public sealed class CompatibilityService : ICompatibilityService
             discoveryFromB.OrderBy(x => x.Name).ToList());
     }
 
-    private static ArtistCard ToArtistCard(Artist artist)
+    private static ArtistCard ToArtistCard(UserArtistPreference preference)
     {
-        var metadata = JsonSerializer.Deserialize<SpotifyArtistMetadata>(artist.MetadataJson) ?? new SpotifyArtistMetadata();
-        return new ArtistCard(artist.Id, artist.Name, metadata.ImageUrl, metadata.Genres);
+        var genres = JsonSerializer.Deserialize<List<string>>(preference.TagsJson) ?? [];
+        return new ArtistCard(preference.ArtistId, preference.ArtistName, preference.ImageUrl, preference.PreviewUrl, genres);
     }
 }

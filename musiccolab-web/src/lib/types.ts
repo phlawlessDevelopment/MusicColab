@@ -10,6 +10,7 @@ export interface ArtistCard {
     id: string;
     name: string;
     imageUrl: string | null;
+    previewUrl: string | null;
     genres: string[];
 }
 

@@ -6,9 +6,15 @@ public sealed record RegisterRequest(string Email, string Password);
 public sealed record LoginRequest(string Email, string Password);
 public sealed record AuthResponse(string Token, Guid UserId, string Email);
 
-public sealed record PreferenceRequest(string ArtistId, string Preference);
+public sealed record PreferenceRequest(
+    string ArtistId,
+    string Preference,
+    string ArtistName,
+    string? ImageUrl,
+    string? PreviewUrl,
+    IReadOnlyList<string>? Genres);
 
-public sealed record ArtistCard(string Id, string Name, string? ImageUrl, IReadOnlyList<string> Genres);
+public sealed record ArtistCard(string Id, string Name, string? ImageUrl, string? PreviewUrl, IReadOnlyList<string> Genres);
 public sealed record ArtistFeedResponse(IReadOnlyList<ArtistCard> Artists);
 
 public sealed record UserSummary(Guid Id, string Email, DateTimeOffset CreatedAt);

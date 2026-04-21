@@ -4,7 +4,7 @@ public sealed class SpotifyOptions
 {
     public const string SectionName = "Spotify";
 
-    public string ClientId { get; init; } = string.Empty;
-    public string ClientSecret { get; init; } = string.Empty;
-    public string[] SeedArtistIds { get; init; } = [];
+    public string ClientId { get; set; } = string.Empty;
+    public string ClientSecret { get; set; } = string.Empty;
+    public string[] SeedArtistIds { get; set; } = [];
 }

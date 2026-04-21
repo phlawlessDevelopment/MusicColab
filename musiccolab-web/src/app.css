@@ -478,6 +478,43 @@ button.danger {
   color: rgba(248, 251, 253, 0.86);
 }
 
+.genre-chips {
+  margin-top: 8px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.genre-chip {
+  display: inline-flex;
+  align-items: center;
+  border: 1px solid rgba(248, 251, 253, 0.42);
+  border-radius: 999px;
+  background: rgba(11, 18, 27, 0.38);
+  color: #f8fbfd;
+  font-size: 11px;
+  letter-spacing: 0.02em;
+  padding: 4px 9px;
+  line-height: 1;
+}
+
+.genre-chip-more {
+  background: rgba(248, 251, 253, 0.2);
+}
+
+.audio-preview {
+  margin-top: 12px;
+  touch-action: auto;
+}
+
+.audio-preview audio {
+  width: 100%;
+  max-width: 300px;
+  height: 34px;
+  display: block;
+  touch-action: auto;
+}
+
 .swipe-hint {
   position: absolute;
   left: 0;
@@ -654,6 +691,10 @@ button.danger {
 
   .swipe-stage {
     min-height: 475px;
+  }
+
+  .audio-preview audio {
+    max-width: none;
   }
 
   .swipe-hint {

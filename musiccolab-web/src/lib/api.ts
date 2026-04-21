@@ -1,4 +1,5 @@
 import type {
+    ArtistCard,
     ArtistFeedResponse,
     AuthResponse,
     CompareResponse,
@@ -10,13 +11,18 @@ import type {
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? 'http://localhost:5150';
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-    const response = await fetch(`${API_BASE}${path}`, {
-        ...init,
-        headers: {
-            'Content-Type': 'application/json',
-            ...(init?.headers ?? {})
-        }
-    });
+    let response: Response;
+    try {
+        response = await fetch(`${API_BASE}${path}`, {
+            ...init,
+            headers: {
+                'Content-Type': 'application/json',
+                ...(init?.headers ?? {})
+            }
+        });
+    } catch {
+        throw new Error(`Unable to reach API at ${API_BASE}. Ensure the backend is running and VITE_API_BASE_URL is correct.`);
+    }
 
     if (!response.ok) {
         const text = await response.text();
@@ -75,11 +81,18 @@ export const api = {
         });
     },
 
-    savePreference(token: string, artistId: string, preference: Preference) {
+    savePreference(token: string, artist: ArtistCard, preference: Preference) {
         return request<void>('/preferences', {
             method: 'POST',
             headers: { Authorization: `Bearer ${token}` },
-            body: JSON.stringify({ artistId, preference })
+            body: JSON.stringify({
+                artistId: artist.id,
+                preference,
+                artistName: artist.name,
+                imageUrl: artist.imageUrl,
+                previewUrl: artist.previewUrl,
+                genres: artist.genres
+            })
         });
     },
 

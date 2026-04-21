@@ -16,8 +16,8 @@
 
   let activeView = $state<View>('swipe');
 
-  let feed = $state<ArtistCard[]>([]);
-  let currentIndex = $state(0);
+  let currentArtist = $state<ArtistCard | null>(null);
+  let artistQueue = $state<ArtistCard[]>([]);
   let dragStartX = 0;
   let dragStartY = 0;
   let isDragging = $state(false);
@@ -28,14 +28,15 @@
   let compareTarget = $state('');
   let compareResult = $state<CompareResponse | null>(null);
 
+  const FALLBACK_ARTIST_IMAGE =
+    'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 675"><defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="%23122a38"/><stop offset="100%" stop-color="%23274758"/></linearGradient></defs><rect width="1200" height="675" fill="url(%23g)"/><circle cx="340" cy="220" r="160" fill="rgba(255,255,255,0.08)"/><circle cx="920" cy="460" r="210" fill="rgba(255,255,255,0.06)"/><text x="50%" y="52%" text-anchor="middle" fill="%23f6f8fb" font-size="56" font-family="Arial, sans-serif">Artist Image Unavailable</text></svg>';
+
   const hasSession = $derived(Boolean(token && currentUserId));
-  const currentArtist = $derived(feed[currentIndex]);
-  const nextArtist = $derived(feed[currentIndex + 1]);
-  const nextNextArtist = $derived(feed[currentIndex + 2]);
+  const FEED_BATCH_SIZE = 5;
   const swipeDirection = $derived(dragOffsetX > 0 ? 'Like' : dragOffsetX < 0 ? 'Nope' : '');
   const swipeProgress = $derived(Math.min(1, Math.abs(dragOffsetX) / 120));
-  const queueRemaining = $derived(Math.max(feed.length - currentIndex, 0));
-  const queueCompletion = $derived(feed.length ? Math.round((currentIndex / feed.length) * 100) : 0);
+  const visibleGenres = $derived(currentArtist ? currentArtist.genres.slice(0, 4) : []);
+  const hiddenGenreCount = $derived(currentArtist ? Math.max(currentArtist.genres.length - 4, 0) : 0);
 
   onMount(async () => {
     const savedToken = localStorage.getItem('musiccolab_token');
@@ -46,7 +47,7 @@
       currentUserId = savedUserId;
       currentEmail = savedEmail;
       try {
-        await Promise.all([loadFeed(), loadUsers()]);
+        await Promise.all([loadNextArtist(), loadUsers()]);
       } catch (error) {
         recoverFromInvalidSession(error);
       }
@@ -58,7 +59,7 @@
       const auth = await api.register(email, password);
       setSession(auth.token, auth.userId, auth.email);
       statusMessage = `Welcome, ${auth.email}. Your taste profile is ready.`;
-      await Promise.all([loadFeed(), loadUsers()]);
+      await Promise.all([loadNextArtist(), loadUsers()]);
     });
   }
 
@@ -67,7 +68,7 @@
       const auth = await api.login(email, password);
       setSession(auth.token, auth.userId, auth.email);
       statusMessage = 'Signed in successfully.';
-      await Promise.all([loadFeed(), loadUsers()]);
+      await Promise.all([loadNextArtist(), loadUsers()]);
     });
   }
 
@@ -75,7 +76,8 @@
     token = '';
     currentUserId = '';
     currentEmail = '';
-    feed = [];
+    currentArtist = null;
+    artistQueue = [];
     compareResult = null;
     localStorage.clear();
   }
@@ -84,16 +86,23 @@
     token = nextToken;
     currentUserId = userId;
     currentEmail = userEmail;
+    artistQueue = [];
+    currentArtist = null;
     localStorage.setItem('musiccolab_token', nextToken);
     localStorage.setItem('musiccolab_user_id', userId);
     localStorage.setItem('musiccolab_email', userEmail);
   }
 
-  async function loadFeed() {
+  async function loadNextArtist() {
     if (!token) return;
-    const result = await api.getFeed(token, 12);
-    feed = result.artists;
-    currentIndex = 0;
+
+    if (artistQueue.length === 0) {
+      const result = await api.getFeed(token, FEED_BATCH_SIZE);
+      artistQueue = result.artists;
+    }
+
+    currentArtist = artistQueue[0] ?? null;
+    artistQueue = artistQueue.slice(1);
   }
 
   async function loadUsers() {
@@ -106,23 +115,17 @@
   async function savePreference(preference: Preference) {
     if (!token || !currentArtist) return;
     await withBusy(async () => {
-      await api.savePreference(token, currentArtist.id, preference);
-      currentIndex += 1;
+      await api.savePreference(token, currentArtist, preference);
       resetDrag();
-      if (currentIndex >= feed.length - 2) {
-        await loadFeed();
-      }
+      await loadNextArtist();
     });
   }
 
   async function skipArtist() {
-    currentIndex += 1;
-    resetDrag();
-    if (currentIndex >= feed.length - 2) {
-      await withBusy(async () => {
-        await loadFeed();
-      });
-    }
+    await withBusy(async () => {
+      resetDrag();
+      await loadNextArtist();
+    });
   }
 
   async function compareUsers() {
@@ -204,6 +207,10 @@
     isDragging = false;
     activePointerId = null;
   }
+
+  function stopCardPointerPropagation(event: Event) {
+    event.stopPropagation();
+  }
 </script>
 
 <div class="shell">
@@ -222,16 +229,6 @@
             <strong>{currentEmail}</strong>
           </div>
           <button class="ghost" onclick={logout}>Sign out</button>
-        </div>
-      {/if}
-      {#if hasSession}
-        <div class="metric-chip">
-          <span>Queue</span>
-          <strong>{queueRemaining}</strong>
-        </div>
-        <div class="metric-chip">
-          <span>Progress</span>
-          <strong>{queueCompletion}%</strong>
         </div>
       {/if}
     </div>
@@ -299,26 +296,10 @@
                 <h2>Rating deck</h2>
                 <p>Classify artists in seconds to sharpen your recommendation signal.</p>
               </div>
-              <div class="screen-meta">
-                <p>{queueRemaining} waiting</p>
-                <button class="secondary" onclick={loadFeed} disabled={busy}>Refresh feed</button>
-              </div>
             </div>
 
             {#if currentArtist}
               <div class="swipe-stage">
-                {#if nextNextArtist}
-                  <article class="artist-card stack stack-2" aria-hidden="true">
-                    <img src={nextNextArtist.imageUrl ?? 'https://placehold.co/640x360?text=Artist'} alt="" />
-                  </article>
-                {/if}
-
-                {#if nextArtist}
-                  <article class="artist-card stack stack-1" aria-hidden="true">
-                    <img src={nextArtist.imageUrl ?? 'https://placehold.co/640x360?text=Artist'} alt="" />
-                  </article>
-                {/if}
-
                 <article
                   class="artist-card active-card"
                   class:dragging={isDragging}
@@ -334,10 +315,37 @@
                   <div class="swipe-badge nope" style={`opacity:${swipeDirection === 'Nope' ? swipeProgress : 0}`}>
                     Nope
                   </div>
-                  <img src={currentArtist.imageUrl ?? 'https://placehold.co/640x360?text=Artist'} alt={currentArtist.name} />
+                  <img src={currentArtist.imageUrl ?? FALLBACK_ARTIST_IMAGE} alt={currentArtist.name} />
                   <div class="card-content">
                     <h3>{currentArtist.name}</h3>
-                    <p>{currentArtist.genres.join(' • ') || 'Genre data pending'}</p>
+                    {#if visibleGenres.length}
+                      <div class="genre-chips" aria-label="Artist genres">
+                        {#each visibleGenres as genre}
+                          <span class="genre-chip">{genre}</span>
+                        {/each}
+                        {#if hiddenGenreCount > 0}
+                          <span class="genre-chip genre-chip-more">+{hiddenGenreCount}</span>
+                        {/if}
+                      </div>
+                    {:else}
+                      <p>Genre data pending</p>
+                    {/if}
+
+                    {#if currentArtist.previewUrl}
+                      <div class="audio-preview">
+                        <audio
+                          controls
+                          preload="none"
+                          src={currentArtist.previewUrl}
+                          aria-label="Artist audio preview"
+                          onpointerdown={stopCardPointerPropagation}
+                          onpointermove={stopCardPointerPropagation}
+                          onpointerup={stopCardPointerPropagation}
+                          onpointercancel={stopCardPointerPropagation}
+                          onclick={stopCardPointerPropagation}
+                        ></audio>
+                      </div>
+                    {/if}
                   </div>
                 </article>
 
@@ -354,7 +362,7 @@
                 <button class="success" onclick={() => savePreference('Like')} disabled={busy}>Like</button>
               </div>
             {:else}
-              <p>Feed exhausted. Pull a fresh batch.</p>
+              <p>No artist available right now. The app will keep looking for the next one.</p>
             {/if}
           </section>
         {:else}

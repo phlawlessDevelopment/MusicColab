@@ -245,6 +245,39 @@ Clamps to [0, 100] and handles edge cases (no overlapping artists → score ~50)
 }
 ```
 
+### Spotify Integration (optional but recommended)
+
+MusicColab can integrate with the Spotify Web API to broaden the discovery pool and return richer artist metadata (images, genres, preview URLs). Integration is optional — when not configured the app falls back to seeded/cached artists.
+
+Environment variables / settings used by the app:
+
+- `SPOTIFY_ID` or `Spotify:ClientId` in `appsettings.*.json` — your Spotify Client ID
+- `SPOTIFY_SECRET` or `Spotify:ClientSecret` in `appsettings.*.json` — your Spotify Client Secret
+
+Notes and quick setup:
+
+1. Create a Spotify developer account and register an app: https://developer.spotify.com/dashboard/
+2. Copy the Client ID and Client Secret and place them in `appsettings.Development.json` under the `Spotify` section, or export them as environment variables:
+
+```bash
+export SPOTIFY_ID=your_client_id_here
+export SPOTIFY_SECRET=your_client_secret_here
+```
+
+3. The backend uses the OAuth 2.0 Client Credentials flow (server-to-server) to fetch a short-lived access token. No user-scoped permissions are required for the basic feed functionality.
+
+4. Rate-limits: Spotify search requests accept `limit` in the range `0-10` (default `5`). The server implements batching and a cooldown on `429` responses to avoid abusive behavior. If you see rate-limit warnings, wait a few seconds and retry or reduce concurrent clients.
+
+5. Frontend override: To point the frontend at a different API host, set `VITE_API_BASE_URL` when running the dev server:
+
+```bash
+VITE_API_BASE_URL=http://localhost:5150 npm run dev
+```
+
+Behavior when Spotify is not configured or is rate-limited:
+- The service gracefully falls back to seeded/cached artist data.
+- The UI will show a smaller batched feed (default 5 artists) and will only request more when the user consumes the local queue.
+
 **Optional: Spotify Integration**
 - If empty, the app uses only seeded/cached artists
 - To enable: Get Client ID/Secret from https://developer.spotify.com
